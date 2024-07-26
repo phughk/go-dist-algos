@@ -20,10 +20,7 @@ func client(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		connections[i] = newConnHandler(conn, func(ch *ConnHandler, m *AnyMessage) AnyMessage {
-			log.Panicf("Client does not handle responses")
-			return AnyMessage{}
-		})
+		connections[i] = newConnHandler(conn, clientRequestHandler)
 		defer conn.Close()
 		fmt.Println("Connected to server:", server)
 		client := &Client{Connections: connections}
@@ -59,6 +56,7 @@ func (c *Client) SendOperationRequest(request OperationRequest) (*OperationRespo
 		}(conn)
 	}
 	// Wait for all responses with timeout 5s
+	fmt.Printf("Waiting for all responses...\n")
 	var responses []*OperationResponse
 	for i := 0; i < len(c.Connections); i++ {
 		select {
@@ -69,5 +67,19 @@ func (c *Client) SendOperationRequest(request OperationRequest) (*OperationRespo
 		}
 	}
 	// TODO: Decide value
-	return responses[0], nil
+	decidedValue := responses[0]
+	fmt.Printf("Decided value: %+v\n", decidedValue)
+	return decidedValue, nil
+}
+
+func clientRequestHandler(ch *ConnHandler, m *AnyMessage) {
+	if m.Ping != 0 {
+		fmt.Printf("Client received ping: %+v\n", m)
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
+		if err != nil {
+			log.Panicf("Error sending pong: %v", err)
+		}
+	} else {
+		log.Panicf("Client does not handle responses")
+	}
 }

@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
+	"log"
 	"net"
 	"time"
 )
@@ -27,13 +29,19 @@ func serve(c *cli.Context) error {
 }
 
 func serveConnection(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		fmt.Println("Connection closed: ", conn.RemoteAddr())
+		err := conn.Close()
+		if err != nil {
+			fmt.Println("Error closing connection:", err)
+		}
+	}()
 
 	fmt.Println("New connection from: ", conn.RemoteAddr())
 	ch := newConnHandler(conn, handleRequest)
 	// Every 1s send a ping
-	for {
-		resp, err := ch.SendRequest(&AnyMessage{Ping: 1})
+	for !ch.terminated {
+		resp, err := ch.SendRequest(&AnyMessage{RequestID: uuid.New().String(), Ping: 1})
 		if err != nil {
 			fmt.Println("Error sending ping:", err)
 			break
@@ -44,7 +52,16 @@ func serveConnection(conn net.Conn) {
 	}
 }
 
-func handleRequest(ch *ConnHandler, m *AnyMessage) AnyMessage {
-	// TODO: Handle request
-	return AnyMessage{}
+func handleRequest(ch *ConnHandler, m *AnyMessage) {
+	fmt.Printf("Server inbound request: %+v\n", m)
+	if m.Pong != 0 {
+		fmt.Printf("Server received pong: %+v\n", m)
+	} else if m.OperationRequest != nil {
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, OperationResponse: &OperationResponse{}})
+		if err != nil {
+			log.Panicf("Error sending response: %e", err)
+		}
+	} else {
+		fmt.Printf("Server unhandled request: %+v\n", m)
+	}
 }

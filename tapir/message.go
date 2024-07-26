@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type OperationRequestMode int
 
 const (
@@ -28,7 +30,24 @@ type OperationRequest struct {
 	Mode OperationRequestMode
 }
 
+func (o *OperationRequest) String() string {
+	if o == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *o)
+	}
+}
+
 type OperationResponse struct {
+	Dummy string
+}
+
+func (o *OperationResponse) String() string {
+	if o == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *o)
+	}
 }
 
 type AnyMessage struct {
