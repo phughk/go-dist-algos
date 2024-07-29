@@ -3,14 +3,14 @@ package main
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
-	"log"
 	"net"
 	"time"
 )
 
 func serve(c *cli.Context) error {
-	fmt.Println("Running server...")
+	logrus.Debugf("Running server...")
 
 	store_filepath := c.String("filepath")
 	db, err := NewStorageEngine(store_filepath)
@@ -26,7 +26,7 @@ func serve(c *cli.Context) error {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	defer listener.Close()
-	fmt.Println("Listening on port:", port)
+	logrus.Infof("Listening on port: %d", port)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -52,25 +52,25 @@ func serveConnection(conn net.Conn) {
 	for !ch.terminated {
 		resp, err := ch.SendRequest(&AnyMessage{RequestID: uuid.New().String(), Ping: 1})
 		if err != nil {
-			fmt.Println("Error sending ping:", err)
+			logrus.Warnf("Error sending ping: %e", err)
 			break
 		} else {
-			fmt.Printf("Ping response: %+v\n", resp)
+			logrus.Tracef("Ping response: %+v", resp)
 		}
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func handleRequest(ch *ConnHandler, m *AnyMessage) {
-	fmt.Printf("Server inbound request: %+v\n", m)
+	logrus.Tracef("Server inbound request: %+v", m)
 	if m.Pong != 0 {
-		fmt.Printf("Server received pong: %+v\n", m)
+		logrus.Tracef("Server received pong: %+v", m)
 	} else if m.OperationRequest != nil {
 		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, OperationResponse: &OperationResponse{}})
 		if err != nil {
-			log.Panicf("Error sending response: %e", err)
+			logrus.Panicf("Error sending response: %e", err)
 		}
 	} else {
-		fmt.Printf("Server unhandled request: %+v\n", m)
+		logrus.Errorf("Server unhandled request: %+v", m)
 	}
 }

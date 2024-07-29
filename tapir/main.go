@@ -3,11 +3,14 @@ package main
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"os"
 )
 
 func main() {
+	setLogLevel()
+
 	app := cli.App{
 		Commands: []*cli.Command{
 			{
@@ -51,4 +54,22 @@ func main() {
 		},
 	}
 	app.Run(os.Args)
+}
+
+func setLogLevel() {
+	// Retrieve log level from environment variable
+	logLevelStr := os.Getenv("LOG_LEVEL")
+
+	// Default to info level if environment variable is not set
+	logLevel := logrus.InfoLevel
+	if logLevelStr != "" {
+		var err error
+		logLevel, err = logrus.ParseLevel(logLevelStr)
+		if err != nil {
+			logrus.Fatalf("Invalid log level: %s", logLevelStr)
+		}
+	}
+
+	// Set the log level
+	logrus.SetLevel(logLevel)
 }

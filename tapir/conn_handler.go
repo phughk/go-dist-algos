@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -51,7 +51,7 @@ func (ch *ConnHandler) SendRequest(message *AnyMessage) (*AnyMessage, error) {
 }
 
 func (ch *ConnHandler) SendUntracked(message *AnyMessage) error {
-	fmt.Printf("Sending message: %+v\n", message)
+	logrus.Tracef("Sending message: %+v\n", message)
 	// Serialize the request to JSON
 	data, err := json.Marshal(message)
 	if err != nil {
@@ -72,7 +72,7 @@ func (ch *ConnHandler) SendUntracked(message *AnyMessage) error {
 }
 
 func (ch *ConnHandler) readMessageLoop() {
-	defer fmt.Printf("Shutdown connection listener loop\n")
+	defer logrus.Debugf("Shutdown connection listener loop\n")
 	for !ch.terminated {
 		ch.readNextSingleMessage()
 	}
@@ -83,36 +83,36 @@ func (ch *ConnHandler) readNextSingleMessage() {
 	err := binary.Read(ch.conn, binary.BigEndian, &length)
 	if err != nil {
 		if err == io.EOF {
-			log.Println("Connection closed by peer")
+			logrus.Infof("Connection closed by peer")
 			ch.terminated = true
 			return
 		}
-		log.Panicf("Error reading size for next packet: %e", err)
+		logrus.Panicf("Error reading size for next packet: %e", err)
 	}
 	message := make([]byte, length)
 	_, err = io.ReadFull(ch.conn, message)
 	if err != nil {
-		log.Panicf("Error reading message of expected size %d: %e", length, err)
+		logrus.Panicf("Error reading message of expected size %d: %e", length, err)
 	}
 	// Now check message type
 	anyMessage, err := parseMessage(message)
 	if err != nil {
-		log.Panicf("Error parsing message: %v", err)
+		logrus.Panicf("Error parsing message: %v", err)
 		return
 	}
-	fmt.Printf("Received message: %+v\n", anyMessage)
+	logrus.Tracef("Received message: %+v\n", anyMessage)
 	// Handle callback
 	ch.respMapMux.Lock()
 	respChan, ok := ch.respMap[anyMessage.RequestID]
 	ch.respMapMux.Unlock()
 	if ok {
-		fmt.Printf("It was a response, and handling it now\n")
+		logrus.Tracef("It was a response, and handling it now\n")
 		// This is a response to a request
 		delete(ch.respMap, anyMessage.RequestID)
 		respChan <- anyMessage
 	} else {
 		// This is a request and needs a response
-		fmt.Printf("It was a request and forwarding it to the handler\n")
+		logrus.Tracef("It was a request and forwarding it to the handler\n")
 		ch.requestHandler(ch, &anyMessage)
 	}
 }

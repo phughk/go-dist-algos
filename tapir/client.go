@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"log"
 	"net"
@@ -11,10 +12,10 @@ import (
 )
 
 func client(c *cli.Context) error {
-	fmt.Println("Running client...")
+	logrus.Debugf("Running client...")
 	bootstrap := c.String("cluster")
 	client_id := uuid.New().String()
-	fmt.Printf("Client ID: %s\n", client_id)
+	logrus.Debugf("Client ID: %s\n", client_id)
 	servers := strings.Split(bootstrap, ";")
 	connections := make([]*ConnHandler, len(servers))
 	for i, server := range servers {
@@ -23,19 +24,21 @@ func client(c *cli.Context) error {
 			return err
 		}
 		connections[i] = newConnHandler(conn, clientRequestHandler)
-		defer conn.Close()
-		fmt.Println("Connected to server:", server)
+		defer func() {
+			err := conn.Close()
+			if err != nil {
+				logrus.Errorf("Error closing connection to server: %v", err)
+			}
+		}()
+		logrus.Debugf("Connected to server: %+v", server)
 		client := &Client{Connections: connections}
-		resp, err := client.SendOperationRequest(OperationRequest{})
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Received response: %+v\n", resp)
+		repl(client)
 	}
 	return nil
 }
 
 func repl(client *Client) {
+	fmt.Println("Interactive client, type 'help' for list of commands.")
 	for {
 		fmt.Print("> ")
 		var input string
@@ -44,17 +47,60 @@ func repl(client *Client) {
 		command := strings.ToLower(parts[0])
 		args := parts[1:]
 		switch command {
-		case "begin", "b":
-			client.Send
-		case "get":
-			get(args)
-		case "put":
-			put(args)
-		case "commit":
-			commit(args)
-		case "rollback":
-			rollback(args)
+		case "start", "s", "begin", "b":
+			logrus.Debugf("Started transaction...\n")
+			resp, err := client.SendOperationRequest(&OperationRequest{})
+			if err != nil {
+				logrus.Warnf("Error starting transaction: %v\n", err)
+			}
+			logrus.Debugf("Received response: %+v\n", resp)
+		case "read", "r", "get", "g":
+			if len(args) < 1 {
+				fmt.Println("Usage: read/r/get/g <key>")
+				continue
+			}
+			logrus.Debugf("Reading key: %s...\n", args[0])
+			resp, err := client.SendOperationRequest(&OperationRequest{})
+			if err != nil {
+				logrus.Warnf("Error reading key: %v\n", err)
+			}
+			logrus.Debugf("Received response: %+v\n", resp)
+		case "write", "w", "put", "p":
+			if len(args) < 2 {
+				fmt.Println("Usage: write/w/put/p <key> <value>")
+				continue
+			}
+			logrus.Debugf("Writing key: %s, value: %s...\n", args[0], args[1])
+			resp, err := client.SendOperationRequest(&OperationRequest{})
+			if err != nil {
+				logrus.Warnf("Error writing key: %v\n", err)
+			}
+			logrus.Debugf("Received response: %+v\n", resp)
+		case "commit", "c":
+			logrus.Debugf("Committing transaction...\n")
+			resp, err := client.SendOperationRequest(&OperationRequest{})
+			if err != nil {
+				logrus.Warnf("Error committing transaction: %v\n", err)
+			}
+			logrus.Debugf("Received response: %+v\n", resp)
+		case "cancel", "end", "e", "rollback":
+			logrus.Debugf("Rolling back transaction...\n")
+			resp, err := client.SendOperationRequest(&OperationRequest{})
+			if err != nil {
+				logrus.Warnf("Error cancelling transaction: %v\n", err)
+			}
+			logrus.Debugf("Received response: %+v\n", resp)
+		case "help", "h":
+			fmt.Println("Available commands:")
+			fmt.Println("start/s/begin/b: Start a new transaction")
+			fmt.Println("read/r/get/g <key>: Read the value of a key")
+			fmt.Println("write/w/put/p <key> <value>: Write a key-value pair")
+			fmt.Println("commit/c: Commit the current transaction")
+			fmt.Println("cancel/end/e/rollback: Roll back the current transaction")
+			fmt.Println("help/h: Show this help message")
+			fmt.Println("exit: Exit the client")
 		case "exit":
+			// TODO cancel transaction?
 			return
 		default:
 			fmt.Println("Invalid command")
@@ -103,7 +149,7 @@ func (c *Client) SendOperationRequest(request *OperationRequest) (*OperationResp
 
 func clientRequestHandler(ch *ConnHandler, m *AnyMessage) {
 	if m.Ping != 0 {
-		fmt.Printf("Client received ping: %+v\n", m)
+		logrus.Tracef("Client received ping: %+v\n", m)
 		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
 		if err != nil {
 			log.Panicf("Error sending pong: %v", err)
