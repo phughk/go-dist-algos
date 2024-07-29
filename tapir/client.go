@@ -35,11 +35,38 @@ func client(c *cli.Context) error {
 	return nil
 }
 
+func repl(client *Client) {
+	for {
+		fmt.Print("> ")
+		var input string
+		fmt.Scanln(&input)
+		parts := strings.SplitN(input, " ", 2)
+		command := strings.ToLower(parts[0])
+		args := parts[1:]
+		switch command {
+		case "begin", "b":
+			client.Send
+		case "get":
+			get(args)
+		case "put":
+			put(args)
+		case "commit":
+			commit(args)
+		case "rollback":
+			rollback(args)
+		case "exit":
+			return
+		default:
+			fmt.Println("Invalid command")
+		}
+	}
+}
+
 type Client struct {
 	Connections []*ConnHandler
 }
 
-func (c *Client) SendOperationRequest(request OperationRequest) (*OperationResponse, error) {
+func (c *Client) SendOperationRequest(request *OperationRequest) (*OperationResponse, error) {
 	// Response channel
 	responseChan := make(chan *AnyMessage, len(c.Connections))
 	// Send message to all servers
@@ -47,7 +74,7 @@ func (c *Client) SendOperationRequest(request OperationRequest) (*OperationRespo
 		go func(conn *ConnHandler) {
 			request := AnyMessage{
 				RequestID:        uuid.New().String(),
-				OperationRequest: &request,
+				OperationRequest: request,
 			}
 			resp, err := conn.SendRequest(&request)
 			if err != nil {

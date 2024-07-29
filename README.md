@@ -6,5 +6,5 @@ Distributed systems algos in golang
 ### TAPIR/IR
 
 Tapir promises to be a linearizable transactional storage algorithm with inconsistent replication, but consistent transactions.
-[Paper](tapir/tapir.pdf)
+Read more in the project [README](tapir/README.md)
 
