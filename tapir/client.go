@@ -12,7 +12,9 @@ import (
 
 func client(c *cli.Context) error {
 	fmt.Println("Running client...")
-	bootstrap := c.String("bootstrap")
+	bootstrap := c.String("cluster")
+	client_id := uuid.New().String()
+	fmt.Printf("Client ID: %s\n", client_id)
 	servers := strings.Split(bootstrap, ";")
 	connections := make([]*ConnHandler, len(servers))
 	for i, server := range servers {

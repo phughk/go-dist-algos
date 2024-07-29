@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
+	"go.etcd.io/bbolt"
 	"log"
 	"net"
 	"time"
@@ -11,7 +12,21 @@ import (
 
 func serve(c *cli.Context) error {
 	fmt.Println("Running server...")
-	listener, err := net.Listen("tcp", ":0")
+
+	store_filepath := c.String("filepath")
+	db, err := bbolt.Open(store_filepath, 0600, nil)
+	if err != nil {
+		return fmt.Errorf("error opening database: %e", err)
+	}
+	defer func() {
+		err := db.Close()
+		if err != nil {
+			log.Panicf("Error closing database: %e", err)
+		}
+	}()
+
+	bind_port := c.Int("port")
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", bind_port))
 	if err != nil {
 		return err
 	}

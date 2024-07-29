@@ -22,3 +22,6 @@ go.work
 go.work.sum
 
 .idea
+
+# Ignore any databases created and assume format is <file>.db
+*.db
