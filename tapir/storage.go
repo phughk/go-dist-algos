@@ -19,6 +19,23 @@ var DATA_BUCKET = []byte("client_bucket")
 // has the consensus result.
 var SYSTEM_BUCKET = []byte("system_bucket")
 
+// MASTER_RECORD_BUCKET On synchronization, a single IR node first
+// upcalls into the application protocol with Merge, which takes
+// records from inconsistent replicas and merges them into a master
+// record of successful operations and consensus results. Then, IR
+// upcalls into the application protocol with Sync at each replica.
+// Sync takes the master record and reconciles application protocol
+// state to make the replica consistent with the chosen consensus results.
+//
+// Replicas add inconsistent operations to their record as TENTATIVE
+// and then mark them as FINALIZED once they execute. consensus operations
+// are first marked TENTATIVE with the result of locally executing
+// the operation, then FINALIZED once the record has the consensus result.
+//
+// The leader in a view decides the master record that replicas replicate
+// from each other.
+var MASTER_RECORD_BUCKET = []byte("master_record_bucket")
+
 type StorageEngine struct {
 	db    *bbolt.DB
 	txMap map[*ClientTxRef]*ClientTx

@@ -12,6 +12,7 @@ func main() {
 	setLogLevel()
 
 	app := cli.App{
+		Usage: "A tapir client and server for a KV store backed by bbolt",
 		Commands: []*cli.Command{
 			{
 				Name:  "serve",

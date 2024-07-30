@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -27,14 +28,22 @@ func serve(c *cli.Context) error {
 	port := listener.Addr().(*net.TCPAddr).Port
 	defer listener.Close()
 	logrus.Infof("Listening on port: %d", port)
+	test_properties := &TestProperties{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go ServerRepl(ctx, test_properties)
 	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			return err
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+			conn, err := listener.Accept()
+			if err != nil {
+				return err
+			}
+			go serveConnection(conn)
 		}
-		go serveConnection(conn)
 	}
-	return nil
 }
 
 func serveConnection(conn net.Conn) {

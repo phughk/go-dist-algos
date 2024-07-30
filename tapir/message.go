@@ -27,7 +27,23 @@ const (
 )
 
 type OperationRequest struct {
-	Mode OperationRequestMode
+	Mode          OperationRequestMode
+	ClientID      string
+	TransactionID string
+	Propose       *Operation
+	// Finalize can be its own message or piggy-backed onto next client proposed message
+	Finalize *Operation
+}
+
+type Operation struct {
+	ReadSet   []string
+	WriteCSet map[string]PutcOp
+	WriteSet  map[string]string
+}
+
+type PutcOp struct {
+	Previous string
+	Proposed string
 }
 
 func (o *OperationRequest) String() string {
@@ -38,8 +54,10 @@ func (o *OperationRequest) String() string {
 	}
 }
 
+// OperationResponse is effectively the reply message
 type OperationResponse struct {
-	Dummy string
+	success    bool
+	ReadValues map[string]string
 }
 
 func (o *OperationResponse) String() string {
