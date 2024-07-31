@@ -37,6 +37,13 @@ func main() {
 						Value:    fmt.Sprintf("%s.db", uuid.New().String()),
 						Usage:    "filepath for storage",
 					},
+					&cli.IntFlag{
+						Name:     "min-cluster-size",
+						Aliases:  []string{"m"},
+						Required: false,
+						Value:    0,
+						Usage:    "minimum cluster size, below this size operations will be rejected even if there is quorum",
+					},
 				},
 
 				Action: serve,

@@ -1,5 +1,5 @@
 # TAPIR
-TAPIR is a combination of the Inconsistent Replication (IR) protocol with the application protocol TAPIR on top
+TAPIR is a Transactional Application Protocol for Inconsistent Replication (IR).
 
 ## Inconsistent Replication
 IR uses four sub-protocols
