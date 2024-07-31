@@ -30,12 +30,17 @@ type View struct {
 }
 
 func NewInconsistentReplicationProtocol(ctx context.Context, self string, members []string, db *StorageEngine) *InconsistentReplicationProtocol {
+	// Read local store view, default is 0 with provided config
+	view := &View{
+		currentViewID: 0,
+		leader:        "",
+		members:       members,
+	}
 	ir := &InconsistentReplicationProtocol{
 		self:  self,
 		peers: make(map[string]*PeerTracker),
 		db:    db,
-		// We discover the view from local store and members
-		view: nil,
+		view:  view,
 	}
 	logrus.Infof("Initialized InconsistentReplicationProtocol with self '%s' and members(%d) '%+v'", self, len(members), members)
 	for _, member := range members {
@@ -58,8 +63,16 @@ func NewInconsistentReplicationProtocol(ctx context.Context, self string, member
 	return ir
 }
 
+// / handleMessage is called by a node acting as a peer-client to another node
 func (p *InconsistentReplicationProtocol) handleMessage(peer string, ch *ConnHandler, m *AnyMessage) {
-	logrus.Warnf("Unhandled message from %s: %+v", peer, m)
+	if m.Ping != 0 {
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
+		if err != nil {
+			logrus.Warnf("Error sending pong: %v", err)
+		}
+	} else {
+		logrus.Infof("Unhandled message from peer '%+v': %+v", peer, m)
+	}
 }
 
 func (p *InconsistentReplicationProtocol) protocolExecution(ctx context.Context) {

@@ -56,7 +56,7 @@ func (pc *PeerConnection) handle(ch *ConnHandler, m *AnyMessage) {
 }
 
 func (pc *PeerConnection) blockingPingLoop() {
-	for !pc.ch.terminated {
+	for !pc.ch.terminated.Load() {
 		resp, err := pc.ch.SendRequest(&AnyMessage{RequestID: uuid.New().String(), Ping: 1})
 		if err != nil {
 			logrus.Warnf("Error sending ping: %e", err)

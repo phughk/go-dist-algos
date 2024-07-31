@@ -9,11 +9,12 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type ConnHandler struct {
-	terminated     bool
+	terminated     atomic.Bool
 	conn           net.Conn
 	respMap        map[string]chan AnyMessage
 	respMapMux     sync.Mutex
@@ -74,7 +75,7 @@ func (ch *ConnHandler) SendUntracked(message *AnyMessage) error {
 
 func (ch *ConnHandler) readMessageLoop(ctx context.Context) {
 	defer logrus.Debugf("Shutdown connection listener loop\n")
-	for !ch.terminated {
+	for !ch.terminated.Load() {
 		select {
 		case <-ctx.Done():
 			ch.Close()
@@ -91,7 +92,8 @@ func (ch *ConnHandler) readNextSingleMessage() {
 	if err != nil {
 		if err == io.EOF {
 			logrus.Infof("Connection closed by peer")
-			ch.terminated = true
+			ch.terminated.Store(true)
+
 			return
 		}
 		logrus.Panicf("Error reading size for next packet: %e", err)
@@ -125,7 +127,7 @@ func (ch *ConnHandler) readNextSingleMessage() {
 }
 
 func (ch *ConnHandler) Close() {
-	ch.terminated = true
+	ch.terminated.Store(true)
 	err := ch.conn.Close()
 	if err != nil {
 		logrus.Errorf("Error closing connection: %v", err)
