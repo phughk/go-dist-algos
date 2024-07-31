@@ -1,6 +1,8 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type OperationRequestMode int
 
@@ -70,8 +72,29 @@ func (o *OperationResponse) String() string {
 
 type AnyMessage struct {
 	RequestID         string
+	Hello             *HelloMessage
+	HelloResponse     *HelloResponse
 	OperationRequest  *OperationRequest
 	OperationResponse *OperationResponse
 	Ping              int
 	Pong              int
+}
+
+type ClientType int
+
+const (
+	ClientTypeClient ClientType = iota
+	ClientTypeServer
+)
+
+type HelloMessage struct {
+	Type    ClientType
+	ID      string
+	Members []string
+	ViewID  int
+}
+
+type HelloResponse struct {
+	ViewID  int
+	Members []string
 }

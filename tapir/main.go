@@ -22,7 +22,7 @@ func main() {
 						Name:     "cluster",
 						Aliases:  []string{"c"},
 						Required: true,
-						Usage:    "semi-colon-separated list of bootstrap servers",
+						Usage:    "comma-separated list of bootstrap servers",
 					}, &cli.IntFlag{
 						Name:     "port",
 						Aliases:  []string{"p"},
@@ -55,7 +55,7 @@ func main() {
 					Name:     "cluster",
 					Aliases:  []string{"c"},
 					Required: true,
-					Usage:    "semi-colon-separated list of bootstrap servers",
+					Usage:    "comma-separated list of bootstrap servers",
 				}},
 				Action: client,
 			},

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -18,13 +19,15 @@ func client(c *cli.Context) error {
 	logrus.Debugf("Client ID: %s\n", client_id)
 	servers := strings.Split(bootstrap, ";")
 	connections := make([]*ConnHandler, len(servers))
+	ctx, cancel := context.WithCancel(context.Background())
 	for i, server := range servers {
 		conn, err := net.Dial("tcp", server)
 		if err != nil {
 			return err
 		}
-		connections[i] = newConnHandler(conn, clientRequestHandler)
+		connections[i] = newConnHandler(ctx, conn, clientRequestHandler)
 		defer func() {
+			cancel()
 			err := conn.Close()
 			if err != nil {
 				logrus.Errorf("Error closing connection to server: %v", err)

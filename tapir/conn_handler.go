@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -19,12 +20,12 @@ type ConnHandler struct {
 	requestHandler func(*ConnHandler, *AnyMessage)
 }
 
-func newConnHandler(conn net.Conn, requestHandler func(*ConnHandler, *AnyMessage)) *ConnHandler {
+func newConnHandler(ctx context.Context, conn net.Conn, requestHandler func(*ConnHandler, *AnyMessage)) *ConnHandler {
 	ch := ConnHandler{
 		conn:           conn,
 		respMap:        make(map[string]chan AnyMessage),
 		requestHandler: requestHandler}
-	go ch.readMessageLoop()
+	go ch.readMessageLoop(ctx)
 	return &ch
 }
 
@@ -71,10 +72,16 @@ func (ch *ConnHandler) SendUntracked(message *AnyMessage) error {
 	return nil
 }
 
-func (ch *ConnHandler) readMessageLoop() {
+func (ch *ConnHandler) readMessageLoop(ctx context.Context) {
 	defer logrus.Debugf("Shutdown connection listener loop\n")
 	for !ch.terminated {
-		ch.readNextSingleMessage()
+		select {
+		case <-ctx.Done():
+			ch.Close()
+			return
+		default:
+			ch.readNextSingleMessage()
+		}
 	}
 }
 
@@ -114,6 +121,14 @@ func (ch *ConnHandler) readNextSingleMessage() {
 		// This is a request and needs a response
 		logrus.Tracef("It was a request and forwarding it to the handler\n")
 		ch.requestHandler(ch, &anyMessage)
+	}
+}
+
+func (ch *ConnHandler) Close() {
+	ch.terminated = true
+	err := ch.conn.Close()
+	if err != nil {
+		logrus.Errorf("Error closing connection: %v", err)
 	}
 }
 

@@ -3,11 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"net"
-	"time"
+	"strings"
 )
 
 func serve(c *cli.Context) error {
@@ -20,12 +19,21 @@ func serve(c *cli.Context) error {
 	}
 	defer db.Close()
 
+	members_raw := c.String("cluster")
+	if err != nil {
+		return err
+	}
+	members := processMembers(members_raw)
+
 	bind_port := c.Int("port")
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", bind_port))
 	if err != nil {
 		return err
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
+	host := listener.Addr().(*net.TCPAddr).IP.String()
+	ctx := context.Background()
+	ir := NewInconsistentReplicationProtocol(ctx, fmt.Sprintf("%s:%d", host, port), members, db)
 	defer listener.Close()
 	logrus.Infof("Listening on port: %d", port)
 	test_properties := &TestProperties{}
@@ -41,12 +49,26 @@ func serve(c *cli.Context) error {
 			if err != nil {
 				return err
 			}
-			go serveConnection(conn)
+			go serveConnectionInbound(conn, ir)
 		}
 	}
 }
 
-func serveConnection(conn net.Conn) {
+func processMembers(members_raw string) []string {
+	members_split := strings.Split(members_raw, ",")
+	logrus.Infof("Processing members: %+v", members_split)
+	members := make([]string, 0)
+	for _, member := range members_split {
+		trimmed := strings.TrimSpace(member)
+		if trimmed != "" {
+			logrus.Infof("Adding member to list: '%s'", trimmed)
+			members = append(members, trimmed)
+		}
+	}
+	return members
+}
+
+func serveConnectionInbound(conn net.Conn, ir *InconsistentReplicationProtocol) {
 	defer func() {
 		fmt.Println("Connection closed: ", conn.RemoteAddr())
 		err := conn.Close()
@@ -56,18 +78,9 @@ func serveConnection(conn net.Conn) {
 	}()
 
 	fmt.Println("New connection from: ", conn.RemoteAddr())
-	ch := newConnHandler(conn, handleRequest)
-	// Every 1s send a ping
-	for !ch.terminated {
-		resp, err := ch.SendRequest(&AnyMessage{RequestID: uuid.New().String(), Ping: 1})
-		if err != nil {
-			logrus.Warnf("Error sending ping: %e", err)
-			break
-		} else {
-			logrus.Tracef("Ping response: %+v", resp)
-		}
-		time.Sleep(1 * time.Second)
-	}
+	ctx := context.Background()
+	ch := newPeerConnection(ctx, conn, ir)
+	ch.blockingPingLoop()
 }
 
 func handleRequest(ch *ConnHandler, m *AnyMessage) {
