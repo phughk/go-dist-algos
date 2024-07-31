@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func ServerRepl(ctx context.Context, tp *TestProperties) {
+func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplicationProtocol) {
 	repl := &Repl{
 		Intro: "TAPIR KV Server REPL, type 'help' for list of commands.",
 		Commands: []*Command{
@@ -60,6 +60,36 @@ func ServerRepl(ctx context.Context, tp *TestProperties) {
 						return fmt.Errorf("invalid number of messages to drop_client: %w", err)
 					}
 					tp.AddDropClient(num)
+					return nil
+				},
+			},
+			{
+				Catches: []string{"peers"},
+				Help:    "List the active peers",
+				MinArgs: 0,
+				Execute: func(args []string) error {
+					fmt.Println("Active peers:")
+					for member, peer := range ir.peers {
+						fmt.Printf("peer - %s\n", member)
+						fmt.Printf("     - Last ping time: %s\n", peer.lastPingTime.Format(time.RFC3339Nano))
+						fmt.Printf("     - View ID: %d\n", peer.ViewID)
+					}
+					return nil
+				},
+			},
+			{
+				Catches: []string{"members"},
+				Help:    "List the active members",
+				MinArgs: 0,
+				Execute: func(args []string) error {
+					if ir.view == nil {
+						fmt.Println("No active view")
+						return nil
+					}
+					fmt.Printf("Active members for view %d:\n", ir.view.currentViewID)
+					for _, member := range ir.view.members {
+						fmt.Printf("member - %s\n", member)
+					}
 					return nil
 				},
 			},

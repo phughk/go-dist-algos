@@ -31,7 +31,7 @@ func serve(c *cli.Context) error {
 		return err
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	host := listener.Addr().(*net.TCPAddr).IP.String()
+	host := normaliseIp(listener.Addr().(*net.TCPAddr).IP)
 	ctx := context.Background()
 	ir := NewInconsistentReplicationProtocol(ctx, fmt.Sprintf("%s:%d", host, port), members, db)
 	defer listener.Close()
@@ -39,7 +39,7 @@ func serve(c *cli.Context) error {
 	test_properties := &TestProperties{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go ServerRepl(ctx, test_properties)
+	go ServerRepl(ctx, test_properties, ir)
 	for {
 		select {
 		case <-ctx.Done():
@@ -52,6 +52,17 @@ func serve(c *cli.Context) error {
 			go serveConnectionInbound(conn, ir)
 		}
 	}
+}
+
+func normaliseIp(ip net.IP) string {
+	if ip.IsLoopback() || ip.IsMulticast() || ip.IsUnspecified() {
+		// We need to do this because binding to `:0` etc causes multi-host bind, but we need a specific address for membership identity
+		return "127.0.0.1"
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return fmt.Sprintf("%d.%d.%d.%d", v4[0], v4[1], v4[2], v4[3])
+	}
+	panic(fmt.Sprintf("Invalid IPv6 address: %s", ip))
 }
 
 func processMembers(members_raw string) []string {
@@ -81,18 +92,4 @@ func serveConnectionInbound(conn net.Conn, ir *InconsistentReplicationProtocol) 
 	ctx := context.Background()
 	ch := newPeerConnection(ctx, conn, ir)
 	ch.blockingPingLoop()
-}
-
-func handleRequest(ch *ConnHandler, m *AnyMessage) {
-	logrus.Tracef("Server inbound request: %+v", m)
-	if m.Pong != 0 {
-		logrus.Tracef("Server received pong: %+v", m)
-	} else if m.OperationRequest != nil {
-		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, OperationResponse: &OperationResponse{}})
-		if err != nil {
-			logrus.Panicf("Error sending response: %e", err)
-		}
-	} else {
-		logrus.Errorf("Server unhandled request: %+v", m)
-	}
 }

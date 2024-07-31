@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"log"
 	"net"
 	"time"
 )
@@ -27,16 +28,30 @@ func newPeerConnection(ctx context.Context, conn net.Conn, ir *InconsistentRepli
 	return pc
 }
 
+// Since we cannot differentiate between client and server, this code handles p2p server comms and client comms in one
 func (pc *PeerConnection) handle(ch *ConnHandler, m *AnyMessage) {
 	fmt.Println("Received message")
-	if pc.server {
-	} else {
-		if m.Hello != nil {
-			if m.Hello.Type == ClientTypeServer {
-				pc.server = true
-				pc.ir.AddPeer(ch.conn.RemoteAddr().String(), ch, m.Hello.ViewID)
-			}
+	if m.Ping != 0 {
+		logrus.Tracef("Client received ping: %+v\n", m)
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
+		if err != nil {
+			log.Panicf("Error sending pong: %v", err)
 		}
+	} else if m.Pong != 0 {
+		// This shouldn't happen because ping is synchronous...?
+		panic("Received pong but that is a synchronous request")
+	} else if m.Hello != nil {
+		if m.Hello.Type == ClientTypeServer {
+			pc.server = true
+			pc.ir.AddPeer(ch.conn.RemoteAddr().String(), ch, m.Hello.ViewID)
+		}
+	} else if m.OperationRequest != nil {
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, OperationResponse: &OperationResponse{}})
+		if err != nil {
+			logrus.Panicf("Error sending response: %e", err)
+		}
+	} else {
+		logrus.Errorf("Server unhandled request: %+v", m)
 	}
 }
 
