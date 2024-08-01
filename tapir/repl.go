@@ -1,9 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"github.com/chzyer/readline"
+	"github.com/sirupsen/logrus"
 	"os"
 	"strings"
 )
@@ -11,12 +13,29 @@ import (
 type Repl struct {
 	Intro    string
 	Commands []*Command
+	Cli      *readline.Instance
 }
 
-func newRepl(intro string, commands []*Command) *Repl {
+func NewRepl(intro string, commands []*Command) *Repl {
+	l, err := readline.NewEx(&readline.Config{
+		Prompt:      "\033[31m»\033[0m ",
+		HistoryFile: "/tmp/readline.tmp",
+		//AutoComplete:    completer,
+		InterruptPrompt: "^C",
+		EOFPrompt:       "exit",
+
+		HistorySearchFold: true,
+		//FuncFilterInputRune: filterInput,
+	})
+	if err != nil {
+		panic(err)
+	}
+	l.CaptureExitSignal()
+	logrus.SetOutput(l.Stdout())
 	return &Repl{
 		Intro:    intro,
 		Commands: commands,
+		Cli:      l,
 	}
 }
 
@@ -28,14 +47,19 @@ type Command struct {
 }
 
 func (r *Repl) Loop(ctx context.Context) {
+	defer func() {
+		err := r.Cli.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 	fmt.Println(r.Intro)
-	reader := bufio.NewReader(os.Stdin)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			err := r.Iteration(reader)
+			err := r.Iteration()
 			if err == ExitRequest(0) {
 				os.Exit(0)
 			} else if err != nil {
@@ -51,16 +75,15 @@ func (e ExitRequest) Error() string {
 	return "received exit request"
 }
 
-func (r *Repl) Iteration(reader *bufio.Reader) error {
-	fmt.Print("> ")
-	var input string
-	input, err := reader.ReadString('\n')
+func (r *Repl) Iteration() error {
+	input, err := r.Cli.Readline()
 	if err != nil {
+		if errors.Is(err, readline.ErrInterrupt) {
+			return ExitRequest(0)
+		}
 		fmt.Println("Error reading input:", err)
 		return err
 	}
-	// Remove the last character (newline) from the input
-	input = input[:len(input)-1]
 	parts := strings.SplitN(input, " ", 2)
 	command := strings.ToLower(parts[0])
 	args := parts[1:]
@@ -87,7 +110,7 @@ func (r *Repl) Iteration(reader *bufio.Reader) error {
 				return nil
 			}
 		}
-		fmt.Println("Unknown command. Type 'help' for more information.")
+		fmt.Printf("Unknown command '%+v'. Type 'help' for more information.\n", command)
 		return nil
 	}
 }

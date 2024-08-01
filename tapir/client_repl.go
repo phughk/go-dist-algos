@@ -20,7 +20,7 @@ func (ct *ClientTransaction) Empty() bool {
 
 func ClientRepl(ctx context.Context, client *Client) {
 	var transaction *ClientTransaction = nil
-	repl := newRepl("Interactive client, type 'help' for list of commands.", []*Command{
+	repl := NewRepl("Interactive client, type 'help' for list of commands.", []*Command{
 		{
 			Catches: []string{"start", "s", "begin", "b"},
 			Help:    "Start a new transaction",

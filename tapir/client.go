@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -32,7 +34,9 @@ func client(c *cli.Context) error {
 			cancel()
 			err := conn.Close()
 			if err != nil {
-				logrus.Errorf("Error closing connection to server: %v", err)
+				if !(errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED)) {
+					logrus.Errorf("Error closing connection to server: %v", err)
+				}
 			}
 		}()
 		logrus.Debugf("Connected to server: %+v", server)

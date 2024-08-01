@@ -8,9 +8,8 @@ import (
 )
 
 func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplicationProtocol) {
-	repl := &Repl{
-		Intro: "TAPIR KV Server REPL, type 'help' for list of commands.",
-		Commands: []*Command{
+	repl := NewRepl("TAPIR KV Server REPL, type 'help' for list of commands.",
+		[]*Command{
 			{
 				Catches: []string{"latency", "l"},
 				Help:    "Set the latency for incoming requests",
@@ -94,6 +93,6 @@ func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplica
 				},
 			},
 		},
-	}
+	)
 	repl.Loop(ctx)
 }

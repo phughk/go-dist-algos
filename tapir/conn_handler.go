@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -96,12 +98,13 @@ func (ch *ConnHandler) readNextSingleMessage() {
 	var length uint16
 	err := binary.Read(ch.conn, binary.BigEndian, &length)
 	if err != nil {
-		if err == io.EOF {
+		if ch.terminated.Load() || err == io.EOF {
 			logrus.Infof("Connection closed by peer")
 			ch.Close()
 			return
 		}
-		logrus.Panicf("Error reading size for next packet: %+v", err)
+		//logrus.Panicf("Error reading size TODO delete this")
+		logrus.Panicf("Error reading size for next packet: %v", err)
 	}
 	message := make([]byte, length)
 	_, err = io.ReadFull(ch.conn, message)
@@ -140,7 +143,9 @@ func (ch *ConnHandler) Close() {
 	ch.terminated.Store(true)
 	err := ch.conn.Close()
 	if err != nil {
-		logrus.Errorf("Error closing connection: %v", err)
+		if !(errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED)) {
+			logrus.Errorf("Error closing connection: %v", err)
+		}
 	}
 	ch.shutdownHook()
 }

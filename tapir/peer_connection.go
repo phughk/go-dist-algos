@@ -48,7 +48,7 @@ func (pc *PeerConnection) handleClient(ch *ConnHandler, m *AnyMessage) {
 		if m.Hello.Type == ClientTypeServer {
 			pc.server = true
 			pc.memberID = m.Hello.ID
-			pc.ir.AddPeer(ch.conn.RemoteAddr().String(), ch, m.Hello.ViewID)
+			pc.ir.AddPeer(m.Hello.ID, ch, m.Hello.ViewID)
 			ch.SetShutdownHook(func() {
 				// We need the service address
 				pc.ir.RemovePeer(pc.memberID)
