@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 )
 
 type OperationRequestMode int
@@ -71,13 +72,25 @@ func (o *OperationResponse) String() string {
 }
 
 type AnyMessage struct {
-	RequestID         string
-	Hello             *HelloMessage
-	HelloResponse     *HelloResponse
-	OperationRequest  *OperationRequest
-	OperationResponse *OperationResponse
-	Ping              int
-	Pong              int
+	RequestID          string
+	Hello              *HelloMessage
+	HelloResponse      *HelloResponse
+	OperationRequest   *OperationRequest
+	OperationResponse  *OperationResponse
+	ViewChangeRequest  *ViewChangeRequest
+	ViewChangeResponse *ViewChangeResponse
+	Ping               int
+	Pong               int
+}
+
+type ViewChangeRequest struct {
+	ViewID  int
+	Members []string
+}
+
+type ViewChangeResponse struct {
+	ViewID  int
+	Members []string
 }
 
 type ClientType int
@@ -92,9 +105,31 @@ type HelloMessage struct {
 	ID      string
 	Members []string
 	ViewID  int
+	Leader  string
+}
+
+func NewHelloMessageFromClient(members []string, viewID int) *HelloMessage {
+	return &HelloMessage{
+		Type: ClientTypeClient,
+		// The client ID doesn't matter as long as it's unique
+		ID:      uuid.New().String(),
+		Members: members,
+		ViewID:  viewID,
+	}
+}
+
+func NewHelloMessageFromServer(id string, members []string, viewID int, leader string) *HelloMessage {
+	return &HelloMessage{
+		Type:    ClientTypeServer,
+		ID:      id,
+		Members: members,
+		ViewID:  viewID,
+		Leader:  leader,
+	}
 }
 
 type HelloResponse struct {
 	ViewID  int
 	Members []string
+	Leader  string
 }

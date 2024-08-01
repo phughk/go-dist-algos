@@ -71,7 +71,7 @@ func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplica
 					fmt.Println("Active peers:")
 					for member, peer := range ir.peers {
 						fmt.Printf("peer - %s\n", member)
-						fmt.Printf("     - Last ping time: %s\n", peer.lastPingTime.Format(time.RFC3339Nano))
+						fmt.Printf("     - Last message time: %s\n", peer.conn.lastMessageTime.Format(time.RFC3339Nano))
 						fmt.Printf("     - View ID: %d\n", peer.ViewID)
 					}
 					return nil

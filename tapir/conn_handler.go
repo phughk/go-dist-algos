@@ -13,19 +13,25 @@ import (
 	"time"
 )
 
+type RequestHandler func(*ConnHandler, *AnyMessage)
+
 type ConnHandler struct {
-	terminated     atomic.Bool
-	conn           net.Conn
-	respMap        map[string]chan AnyMessage
-	respMapMux     sync.Mutex
-	requestHandler func(*ConnHandler, *AnyMessage)
+	terminated      atomic.Bool
+	conn            net.Conn
+	respMap         map[string]chan AnyMessage
+	respMapMux      sync.Mutex
+	requestHandler  RequestHandler
+	shutdownHook    func()
+	lastMessageTime time.Time
 }
 
-func newConnHandler(ctx context.Context, conn net.Conn, requestHandler func(*ConnHandler, *AnyMessage)) *ConnHandler {
+func newConnHandler(ctx context.Context, conn net.Conn, requestHandler func(*ConnHandler, *AnyMessage), shutdownHook func()) *ConnHandler {
 	ch := ConnHandler{
 		conn:           conn,
 		respMap:        make(map[string]chan AnyMessage),
-		requestHandler: requestHandler}
+		requestHandler: requestHandler,
+		shutdownHook:   shutdownHook,
+	}
 	go ch.readMessageLoop(ctx)
 	return &ch
 }
@@ -92,17 +98,17 @@ func (ch *ConnHandler) readNextSingleMessage() {
 	if err != nil {
 		if err == io.EOF {
 			logrus.Infof("Connection closed by peer")
-			ch.terminated.Store(true)
-
+			ch.Close()
 			return
 		}
-		logrus.Panicf("Error reading size for next packet: %e", err)
+		logrus.Panicf("Error reading size for next packet: %+v", err)
 	}
 	message := make([]byte, length)
 	_, err = io.ReadFull(ch.conn, message)
 	if err != nil {
 		logrus.Panicf("Error reading message of expected size %d: %e", length, err)
 	}
+	ch.lastMessageTime = time.Now()
 	// Now check message type
 	anyMessage, err := parseMessage(message)
 	if err != nil {
@@ -126,12 +132,21 @@ func (ch *ConnHandler) readNextSingleMessage() {
 	}
 }
 
+func (ch *ConnHandler) SetShutdownHook(newHook func()) {
+	ch.shutdownHook = newHook
+}
+
 func (ch *ConnHandler) Close() {
 	ch.terminated.Store(true)
 	err := ch.conn.Close()
 	if err != nil {
 		logrus.Errorf("Error closing connection: %v", err)
 	}
+	ch.shutdownHook()
+}
+
+func (ch *ConnHandler) SetHandler(handler RequestHandler) {
+	ch.requestHandler = handler
 }
 
 func parseMessage(message []byte) (AnyMessage, error) {

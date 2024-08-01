@@ -32,7 +32,7 @@ var SYSTEM_BUCKET = []byte("system_bucket")
 // are first marked TENTATIVE with the result of locally executing
 // the operation, then FINALIZED once the record has the consensus result.
 //
-// The leader in a view decides the master record that replicas replicate
+// The Leader in a view decides the master record that replicas replicate
 // from each other.
 var MASTER_RECORD_BUCKET = []byte("master_record_bucket")
 

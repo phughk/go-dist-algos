@@ -25,7 +25,9 @@ func client(c *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		connections[i] = newConnHandler(ctx, conn, clientRequestHandler)
+		connections[i] = newConnHandler(ctx, conn, clientRequestHandler, func() {
+			cancel()
+		})
 		defer func() {
 			cancel()
 			err := conn.Close()
@@ -35,7 +37,7 @@ func client(c *cli.Context) error {
 		}()
 		logrus.Debugf("Connected to server: %+v", server)
 		client := &Client{Connections: connections}
-		ClientRepl(client)
+		ClientRepl(ctx, client)
 	}
 	return nil
 }
@@ -111,6 +113,6 @@ func clientRequestHandler(ch *ConnHandler, m *AnyMessage) {
 			log.Panicf("Error sending pong: %v", err)
 		}
 	} else {
-		log.Panicf("Client does not handle responses")
+		log.Panicf("Client does not handleClient responses")
 	}
 }

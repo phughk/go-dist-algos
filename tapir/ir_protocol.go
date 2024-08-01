@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"net"
 	"sync"
-	"time"
 )
 
 type InconsistentReplicationProtocol struct {
@@ -18,9 +18,8 @@ type InconsistentReplicationProtocol struct {
 }
 
 type PeerTracker struct {
-	conn         *ConnHandler
-	lastPingTime time.Time
-	ViewID       int
+	conn   *ConnHandler
+	ViewID int
 }
 
 type View struct {
@@ -53,10 +52,19 @@ func NewInconsistentReplicationProtocol(ctx context.Context, self string, member
 		} else {
 			thisMember := member
 			logrus.Infof("Connected to peer: %s", thisMember)
-			peer := newConnHandler(ctx, conn, func(ch *ConnHandler, m *AnyMessage) {
-				ir.handleMessage(thisMember, ch, m)
-			})
+			peer := newConnHandler(ctx, conn,
+				func(ch *ConnHandler, m *AnyMessage) {
+					ir.handleMessage(thisMember, ch, m)
+				},
+				func() {
+					ir.RemovePeer(thisMember)
+				},
+			)
 			ir.AddPeer(thisMember, peer, 0)
+			peer.SetShutdownHook(func() {
+				ir.RemovePeer(thisMember)
+			})
+			go ir.peerInit(ctx, peer)
 		}
 	}
 	go ir.protocolExecution(ctx)
@@ -69,6 +77,17 @@ func (p *InconsistentReplicationProtocol) handleMessage(peer string, ch *ConnHan
 		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
 		if err != nil {
 			logrus.Warnf("Error sending pong: %v", err)
+		}
+	} else if m.Hello != nil {
+		logrus.Warnf("Received hello message: %+v", m.Hello)
+		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID,
+			HelloResponse: &HelloResponse{ViewID: p.view.currentViewID,
+				Members: p.view.members,
+				Leader:  p.view.leader,
+			}})
+		if err != nil {
+			logrus.Warnf("Error sending hello response: %v", err)
+			ch.Close()
 		}
 	} else {
 		logrus.Infof("Unhandled message from peer '%+v': %+v", peer, m)
@@ -91,7 +110,7 @@ func (p *InconsistentReplicationProtocol) protocolExecution(ctx context.Context)
 func (p *InconsistentReplicationProtocol) protocolIteration() {
 	// Check last messages
 	// Confirm view and members
-	// Validate leader and check view change need
+	// Validate Leader and check view change need
 }
 
 func (p *InconsistentReplicationProtocol) AddPeer(s string, ch *ConnHandler, ViewID int) {
@@ -104,8 +123,38 @@ func (p *InconsistentReplicationProtocol) AddPeer(s string, ch *ConnHandler, Vie
 		previous.conn.Close()
 	}
 	p.peers[s] = &PeerTracker{
-		conn:         ch,
-		lastPingTime: time.Now(),
-		ViewID:       ViewID,
+		conn:   ch,
+		ViewID: ViewID,
 	}
+}
+
+func (p *InconsistentReplicationProtocol) RemovePeer(member string) {
+	p.mx.Lock()
+	defer p.mx.Unlock()
+	delete(p.peers, member)
+	logrus.Infof("Removed peer: %s, peers now are: %+v", member, p.peers)
+}
+
+func (p *InconsistentReplicationProtocol) peerInit(ctx context.Context, peer *ConnHandler) {
+	resp, err := peer.SendRequest(&AnyMessage{
+		RequestID: uuid.New().String(),
+		Hello:     NewHelloMessageFromServer(p.self, p.view.members, p.view.currentViewID, p.view.leader),
+	})
+	if err != nil {
+		logrus.Warnf("Error sending hello message to peer '%+v': %v", peer.conn.RemoteAddr().String(), err)
+		peer.Close()
+		return
+	}
+	if resp.HelloResponse == nil {
+		logrus.Warnf("Received unexpected hello response from peer '%+v': %+v", peer.conn.RemoteAddr().String(), resp)
+		peer.Close()
+		return
+	}
+	if resp.HelloResponse.ViewID > p.view.currentViewID {
+		p.catchupToView(ctx, resp.HelloResponse)
+	}
+}
+
+func (p *InconsistentReplicationProtocol) catchupToView(ctx context.Context, hello *HelloResponse) {
+	logrus.Infof("TODO Catching up to view ID %d'", hello.ViewID)
 }

@@ -18,7 +18,7 @@ func (ct *ClientTransaction) Empty() bool {
 	return ct == nil || (ct.ReadSet == nil && ct.WriteSet == nil)
 }
 
-func ClientRepl(client *Client) {
+func ClientRepl(ctx context.Context, client *Client) {
 	var transaction *ClientTransaction = nil
 	repl := newRepl("Interactive client, type 'help' for list of commands.", []*Command{
 		{
@@ -122,6 +122,5 @@ func ClientRepl(client *Client) {
 			},
 		},
 	})
-	ctx := context.Background()
 	repl.Loop(ctx)
 }
