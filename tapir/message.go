@@ -88,9 +88,25 @@ type ViewChangeRequest struct {
 	Members []string
 }
 
+func (v *ViewChangeRequest) String() string {
+	if v == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *v)
+	}
+}
+
 type ViewChangeResponse struct {
 	ViewID  int
 	Members []string
+}
+
+func (v *ViewChangeResponse) String() string {
+	if v == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *v)
+	}
 }
 
 type ClientType int
@@ -106,6 +122,14 @@ type HelloMessage struct {
 	Members []string
 	ViewID  int
 	Leader  string
+}
+
+func (m *HelloMessage) String() string {
+	if m == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *m)
+	}
 }
 
 func NewHelloMessageFromClient(members []string, viewID int) *HelloMessage {
@@ -132,4 +156,12 @@ type HelloResponse struct {
 	ViewID  int
 	Members []string
 	Leader  string
+}
+
+func (m *HelloResponse) String() string {
+	if m == nil {
+		return "nil"
+	} else {
+		return fmt.Sprintf("%+v", *m)
+	}
 }

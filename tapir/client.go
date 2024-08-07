@@ -133,6 +133,9 @@ func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
 					Members: view.ViewState.Changing.proposedMembers,
 				},
 			})
+			if err != nil {
+				logrus.Errorf("Below formatting error is for this: %v", err.Error())
+			}
 			expectedMemberResults <- &MaybeError{Error: err, Response: res}
 		}()
 	}
@@ -147,7 +150,7 @@ func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
 				responses = append(responses, resp.Response)
 			}
 		case <-time.After(5 * time.Second):
-			logrus.Warnf("Failed to make peer request to change view: %s", expectedMemberResults)
+			logrus.Warnf("Failed to make peer request to change view: received %d out of %d responses", len(responses), len(expectedMembers))
 		}
 	}
 	// check if we have quorum results, if not then fail

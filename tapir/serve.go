@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func serve(c *cli.Context) error {
@@ -35,7 +36,9 @@ func serve(c *cli.Context) error {
 	port := listener.Addr().(*net.TCPAddr).Port
 	host := normaliseIp(listener.Addr().(*net.TCPAddr).IP)
 	ctx := context.Background()
-	test_properties := &TestProperties{}
+	test_properties := &TestProperties{
+		viewChangePeriod: time.Duration(1) * time.Second,
+	}
 	ir := NewInconsistentReplicationProtocol(ctx, fmt.Sprintf("%s:%d", host, port), members, db, test_properties)
 	defer listener.Close()
 	logrus.Infof("Listening on port: %d", port)

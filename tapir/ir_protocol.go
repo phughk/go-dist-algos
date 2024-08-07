@@ -66,6 +66,7 @@ func NewInconsistentReplicationProtocol(ctx context.Context, self string, member
 			currentViewID: 0,
 			leader:        "",
 			members:       members,
+			when:          time.Now(),
 			ViewState:     ViewState{Normal: 0, Changing: nil, Recovery: nil},
 		},
 	}
@@ -105,7 +106,8 @@ func (p *InconsistentReplicationProtocol) handleMessage(peer string, ch *ConnHan
 		return
 	}
 	if m.Ping != 0 {
-		if !p.tp.DecDropPing() {
+		if p.tp.DecDropPing() {
+			logrus.Tracef("Dropping ping message from peer '%s'", peer)
 			return
 		}
 		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
@@ -168,7 +170,7 @@ func (p *InconsistentReplicationProtocol) majorityQuorum(count int) bool {
 	return float64(count) > math.Ceil((float64(total)-1.0)/2.0)
 }
 
-func (p *InconsistentReplicationProtocol) shoudlBeNextLeader() bool {
+func (p *InconsistentReplicationProtocol) shouldBeNextLeader() bool {
 	sorted := make([]string, 0, len(p.view.members))
 	// Add self :)
 	sorted = append(sorted, p.self)
@@ -190,7 +192,13 @@ func (p *InconsistentReplicationProtocol) shoudlBeNextLeader() bool {
 func (p *InconsistentReplicationProtocol) viewChangeNeeded() bool {
 	// View changes are needed if the view has expired AND membership needs updating
 	// This prevents membership being too flaky
-	viewChangeTimeoutExpired := p.view.when.Add(p.tp.viewChangePeriod).After(time.Now())
+	if p.view.when.IsZero() {
+		panic("Current view 'when' is not set")
+	}
+	if p.tp.viewChangePeriod.Milliseconds() == 0 {
+		panic("The view change period is set to 0ms")
+	}
+	viewChangeTimeoutExpired := p.view.when.Add(p.tp.viewChangePeriod).Before(time.Now())
 	// Do we need to add anyone
 	peersAreMembers := func() bool {
 		p.mx.RLock()
@@ -226,6 +234,9 @@ func (p *InconsistentReplicationProtocol) viewChangeNeeded() bool {
 		}
 		return true
 	}()
+	if viewChangeTimeoutExpired {
+		logrus.Tracef("The view timeout has expired but peersAreMember=%b and membersArePeers=%b", peersAreMembers, membersArePeers)
+	}
 	return viewChangeTimeoutExpired && !(peersAreMembers && membersArePeers)
 }
 
