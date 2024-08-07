@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"log"
+	"math"
 	"net"
 	"strings"
 	"syscall"
@@ -47,9 +48,14 @@ func client(c *cli.Context) error {
 }
 
 type Client struct {
-	Connections []*ConnHandler
+	Connections    []*ConnHandler
+	TestProperties *TestProperties
 }
 
+// SendOperationRequest IR replicas send their current view number in every response to clients. For an operation to
+// be considered successful, the IR client must receive responses with matching view numbers. For consensus operations,
+// the view numbers in REPLY and CONFIRM must match as well. If a client receives responses with different view numbers,
+// it notifies the replicas in the older view.
 func (c *Client) SendOperationRequest(readSet []string, writeSet map[string]PutcOp) (*OperationResponse, error) {
 	// Response channel
 	responseChan := make(chan *AnyMessage, len(c.Connections))
@@ -98,7 +104,7 @@ func (c *Client) SendOperationRequest(readSet []string, writeSet map[string]Putc
 		select {
 		case resp := <-responseChan:
 			responses = append(responses, resp.OperationResponse)
-		case <-time.After(5 * time.Second):
+		case <-time.After(c.TestProperties.timeout):
 			break
 		}
 	}
@@ -107,6 +113,70 @@ func (c *Client) SendOperationRequest(readSet []string, writeSet map[string]Putc
 	decidedValue := responses[0]
 	fmt.Printf("Decided value: %+v\n", decidedValue)
 	return decidedValue, nil
+}
+
+type MaybeError struct {
+	Error    error
+	Response *AnyMessage
+}
+
+func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
+	expectedMembers := view.members
+	expectedMemberResults := make(chan *MaybeError)
+	// We need f+1 results for membership to pass
+	for _, peer := range c.Connections {
+		go func() {
+			// Request timeout is handled outside this function by catch-all
+			res, err := peer.SendRequest(&AnyMessage{
+				ViewChangeRequest: &ViewChangeRequest{
+					ViewID:  view.ViewState.Changing.ToViewID,
+					Members: view.ViewState.Changing.proposedMembers,
+				},
+			})
+			expectedMemberResults <- &MaybeError{Error: err, Response: res}
+		}()
+	}
+	// Now collect all responses or timeout
+	responses := make([]*AnyMessage, 0, len(expectedMembers))
+	for i := 0; i < len(expectedMembers); i++ {
+		select {
+		case resp := <-expectedMemberResults:
+			if resp.Error != nil {
+				logrus.Warnf("Failed to make peer request to change view: %s", resp.Error.Error())
+			} else {
+				responses = append(responses, resp.Response)
+			}
+		case <-time.After(5 * time.Second):
+			logrus.Warnf("Failed to make peer request to change view: %s", expectedMemberResults)
+		}
+	}
+	// check if we have quorum results, if not then fail
+	// this is majority (slow, classic) quorum of f+1 in a 2f+1 cluster
+	// So if total is 2f + 1, and we want at least n, then n > f+1
+	classic_quorum := len(expectedMembers)/2 + 1
+	if len(responses) < classic_quorum {
+		return nil, fmt.Errorf("not enough responses to change view: received %d, required %d, cluster %d", len(responses), classic_quorum, len(expectedMembers))
+	}
+	// All the responses for quorum must have the same view
+	// - remove responses that are older
+	// - invalidate results if there is a matching or higher view
+	// This effectively is reduced to "only responses that are on the same current view"
+	latest_view := view.currentViewID
+	resp_in_view := make([]*AnyMessage, 0, len(responses))
+	for _, response := range responses {
+		if response.ViewChangeResponse.ViewID != view.currentViewID {
+			// We want to track the latest view in case we are behind
+			latest_view = int(math.Max(float64(latest_view), float64(response.ViewChangeResponse.ViewID)))
+			// Members that arent caught up in current view can be rejected
+			continue
+		}
+		resp_in_view = append(resp_in_view, response)
+	}
+	// Re-verify we have quorum of correct view responses
+	if len(resp_in_view) < classic_quorum {
+		return nil, fmt.Errorf("not enough responses to change view as the views were in different state: matching views %d, received %d, required %d, cluster %d", len(resp_in_view), len(responses), classic_quorum, len(expectedMembers))
+	}
+	return nil, nil
 }
 
 func clientRequestHandler(ch *ConnHandler, m *AnyMessage) {

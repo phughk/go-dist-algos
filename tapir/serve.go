@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 	"net"
 	"strings"
+	"syscall"
 )
 
 func serve(c *cli.Context) error {
@@ -33,10 +35,10 @@ func serve(c *cli.Context) error {
 	port := listener.Addr().(*net.TCPAddr).Port
 	host := normaliseIp(listener.Addr().(*net.TCPAddr).IP)
 	ctx := context.Background()
-	ir := NewInconsistentReplicationProtocol(ctx, fmt.Sprintf("%s:%d", host, port), members, db)
+	test_properties := &TestProperties{}
+	ir := NewInconsistentReplicationProtocol(ctx, fmt.Sprintf("%s:%d", host, port), members, db, test_properties)
 	defer listener.Close()
 	logrus.Infof("Listening on port: %d", port)
-	test_properties := &TestProperties{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go ServerRepl(ctx, test_properties, ir)
@@ -84,7 +86,9 @@ func serveConnectionInbound(conn net.Conn, ir *InconsistentReplicationProtocol) 
 		fmt.Println("Connection closed: ", conn.RemoteAddr())
 		err := conn.Close()
 		if err != nil {
-			fmt.Println("Error closing connection:", err)
+			if !(errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED)) {
+				logrus.Warnf("Error closing connection: %+v", err)
+			}
 		}
 	}()
 

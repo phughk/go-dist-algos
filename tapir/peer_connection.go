@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"log"
@@ -34,8 +33,13 @@ func newPeerConnection(ctx context.Context, conn net.Conn, ir *InconsistentRepli
 
 // Since we cannot differentiate between client and server, this code handles p2p server upgrade and client comms in one
 func (pc *PeerConnection) handleClient(ch *ConnHandler, m *AnyMessage) {
-	fmt.Println("Received message")
+	if pc.ir.tp.DecDropClient() {
+		return
+	}
 	if m.Ping != 0 {
+		if !pc.ir.tp.DecDropPing() {
+			return
+		}
 		logrus.Tracef("Client received ping: %+v\n", m)
 		err := ch.SendUntracked(&AnyMessage{RequestID: m.RequestID, Pong: m.Ping})
 		if err != nil {
@@ -74,7 +78,7 @@ func (pc *PeerConnection) blockingPingLoop() {
 	for !pc.ch.terminated.Load() {
 		resp, err := pc.ch.SendRequest(&AnyMessage{RequestID: uuid.New().String(), Ping: 1})
 		if err != nil {
-			logrus.Warnf("Error sending ping: %e", err)
+			logrus.Warnf("Error sending ping: %+v", err)
 			pc.ch.Close()
 			break
 		} else {

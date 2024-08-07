@@ -24,6 +24,32 @@ func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplica
 				},
 			},
 			{
+				Catches: []string{"view_change_period", "vc"},
+				Help:    "Set the view change period",
+				MinArgs: 1,
+				Execute: func(args []string) error {
+					period, err := strconv.Atoi(args[0])
+					if err != nil {
+						return fmt.Errorf("invalid view change period: %w", err)
+					}
+					tp.SetViewChangePeriod(time.Duration(period) * time.Second)
+					return nil
+				},
+			},
+			{
+				Catches: []string{"timeout", "t"},
+				Help:    "Set the timeout for incoming requests",
+				MinArgs: 1,
+				Execute: func(args []string) error {
+					timeout, err := strconv.Atoi(args[0])
+					if err != nil {
+						return fmt.Errorf("invalid timeout value: %w", err)
+					}
+					tp.SetTimeout(time.Duration(timeout) * time.Millisecond)
+					return nil
+				},
+			},
+			{
 				Catches: []string{"drop_ping", "dp"},
 				Help:    "Set the number of messages to drop_ping before processing",
 				MinArgs: 1,
@@ -81,10 +107,6 @@ func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplica
 				Help:    "List the active members",
 				MinArgs: 0,
 				Execute: func(args []string) error {
-					if ir.view == nil {
-						fmt.Println("No active view")
-						return nil
-					}
 					fmt.Printf("Active members for view %d:\n", ir.view.currentViewID)
 					for _, member := range ir.view.members {
 						fmt.Printf("member - %s\n", member)
