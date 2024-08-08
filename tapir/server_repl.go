@@ -11,6 +11,16 @@ func ServerRepl(ctx context.Context, tp *TestProperties, ir *InconsistentReplica
 	repl := NewRepl("TAPIR KV Server REPL, type 'help' for list of commands.",
 		[]*Command{
 			{
+				Catches: []string{"status", "s"},
+				Help:    "Display status of replica",
+				MinArgs: 0,
+				Execute: func(args []string) error {
+					fmt.Printf("Self: %s\n", ir.self)
+					fmt.Printf("View: %+v\n", ir.view)
+					return nil
+				},
+			},
+			{
 				Catches: []string{"latency", "l"},
 				Help:    "Set the latency for incoming requests",
 				MinArgs: 1,

@@ -28,6 +28,7 @@ type PeerTracker struct {
 
 type View struct {
 	currentViewID int
+	self          string
 	when          time.Time
 	leader        string
 	members       []string
@@ -64,6 +65,7 @@ func NewInconsistentReplicationProtocol(ctx context.Context, self string, member
 		db:    db,
 		view: View{
 			currentViewID: 0,
+			self:          self,
 			leader:        "",
 			members:       members,
 			when:          time.Now(),
@@ -124,6 +126,18 @@ func (p *InconsistentReplicationProtocol) handleMessage(peer string, ch *ConnHan
 			logrus.Warnf("Error sending hello response: %v", err)
 			ch.Close()
 		}
+	} else if m.ViewChangeRequest != nil {
+		// TODO check should validate current view state, instead we are just going to send what we got a trust there is no corruption
+		err := ch.SendUntracked(&AnyMessage{
+			RequestID: m.RequestID,
+			ViewChangeResponse: &ViewChangeResponse{
+				p.view.currentViewID,
+				p.view.members,
+			},
+		})
+		if err != nil {
+			logrus.Errorf("Failed to send view change response: %s", err.Error())
+		}
 	} else {
 		logrus.Warnf("Unhandled message from peer '%+v': %+v", peer, m)
 	}
@@ -156,6 +170,8 @@ func (p *InconsistentReplicationProtocol) peersThatAreMembers() []string {
 	return memberPeers
 }
 
+// a fast quorum, for which if all the results are identical then there is no need to proceed to classic quorum
+// NOTE: remember to add self to the list, because you don't have a response from self
 func (p *InconsistentReplicationProtocol) fastQuorum(count int) bool {
 	total := len(p.view.members)
 	// (3f/2)+1 > total
@@ -163,6 +179,8 @@ func (p *InconsistentReplicationProtocol) fastQuorum(count int) bool {
 	return float64(count) > math.Ceil((float64(total)-1.0)*(2.0/3.0))
 }
 
+// majority quorum will be true if the provided number of *VOTERS* is within the quorum.
+// NOTE: remember to add self to list of voters, as yourself is not included in request responses
 func (p *InconsistentReplicationProtocol) majorityQuorum(count int) bool {
 	total := len(p.view.members)
 	// we tolerate f failures in a 2f+1 group
@@ -235,7 +253,7 @@ func (p *InconsistentReplicationProtocol) viewChangeNeeded() bool {
 		return true
 	}()
 	if viewChangeTimeoutExpired {
-		logrus.Tracef("The view timeout has expired but peersAreMember=%b and membersArePeers=%b", peersAreMembers, membersArePeers)
+		logrus.Tracef("The view timeout has expired but peersAreMember=%t and membersArePeers=%t", peersAreMembers, membersArePeers)
 	}
 	return viewChangeTimeoutExpired && !(peersAreMembers && membersArePeers)
 }
@@ -268,6 +286,7 @@ func (p *InconsistentReplicationProtocol) proposeViewChange() {
 	currentViewID := p.view.currentViewID
 	p.view = View{
 		currentViewID: currentViewID + 1,
+		self:          p.view.self,
 		when:          time.Now(),
 		leader:        "",
 		members:       p.view.members,

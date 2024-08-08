@@ -121,13 +121,25 @@ type MaybeError struct {
 }
 
 func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
-	expectedMembers := view.members
+	clusterMembers := view.members
+	membersNotSelf := view.members
+	// Remove self from members
+	if view.self == "" {
+		panic("View's self was empty")
+	}
+	for i := 0; i < len(membersNotSelf); i++ {
+		if membersNotSelf[i] == view.self {
+			membersNotSelf = append(membersNotSelf[:i], membersNotSelf[i+1:]...)
+			break
+		}
+	}
 	expectedMemberResults := make(chan *MaybeError)
 	// We need f+1 results for membership to pass
 	for _, peer := range c.Connections {
 		go func() {
 			// Request timeout is handled outside this function by catch-all
 			res, err := peer.SendRequest(&AnyMessage{
+				RequestID: uuid.New().String(),
 				ViewChangeRequest: &ViewChangeRequest{
 					ViewID:  view.ViewState.Changing.ToViewID,
 					Members: view.ViewState.Changing.proposedMembers,
@@ -140,8 +152,8 @@ func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
 		}()
 	}
 	// Now collect all responses or timeout
-	responses := make([]*AnyMessage, 0, len(expectedMembers))
-	for i := 0; i < len(expectedMembers); i++ {
+	responses := make([]*AnyMessage, 0, len(membersNotSelf))
+	for i := 0; i < len(membersNotSelf); i++ {
 		select {
 		case resp := <-expectedMemberResults:
 			if resp.Error != nil {
@@ -150,15 +162,17 @@ func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
 				responses = append(responses, resp.Response)
 			}
 		case <-time.After(5 * time.Second):
-			logrus.Warnf("Failed to make peer request to change view: received %d out of %d responses", len(responses), len(expectedMembers))
+			logrus.Warnf("Not all members responded to change view: received %d out of %d responses (%+v)", len(responses), len(membersNotSelf), membersNotSelf)
 		}
 	}
 	// check if we have quorum results, if not then fail
 	// this is majority (slow, classic) quorum of f+1 in a 2f+1 cluster
 	// So if total is 2f + 1, and we want at least n, then n > f+1
-	classic_quorum := len(expectedMembers)/2 + 1
+	classic_quorum := len(clusterMembers)/2 + 1
+	// The responses do not include ourselves, so we need to remove one to account for ourselves
+	classic_quorum -= 1
 	if len(responses) < classic_quorum {
-		return nil, fmt.Errorf("not enough responses to change view: received %d, required %d, cluster %d", len(responses), classic_quorum, len(expectedMembers))
+		return nil, fmt.Errorf("not enough responses to change view: received %d, required %d, cluster %d", len(responses), classic_quorum, len(membersNotSelf))
 	}
 	// All the responses for quorum must have the same view
 	// - remove responses that are older
@@ -177,7 +191,7 @@ func (c *Client) SendViewChangeRequest(view *View) (*View, error) {
 	}
 	// Re-verify we have quorum of correct view responses
 	if len(resp_in_view) < classic_quorum {
-		return nil, fmt.Errorf("not enough responses to change view as the views were in different state: matching views %d, received %d, required %d, cluster %d", len(resp_in_view), len(responses), classic_quorum, len(expectedMembers))
+		return nil, fmt.Errorf("not enough responses to change view as the views were in different state: matching views %d, received %d, required %d, cluster %d", len(resp_in_view), len(responses), classic_quorum, len(membersNotSelf))
 	}
 	return nil, nil
 }
